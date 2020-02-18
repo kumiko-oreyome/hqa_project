@@ -1,8 +1,68 @@
 import itertools,random
 from multidoc.core.entity import Document,MultiDocExample,Paragraph
-from multidoc.core.op import find_most_related_paragraph
 from multidoc.eval.metric import f1_score,recall,max_metric_over_multiple_refs
 from multidoc.util import jsonl_reader
+
+
+def load_dureader_examples(paths,mode):
+    l = []
+    for example in _load_dataset(paths,[]):
+        if mode == 'answer_doc' or mode== 'gold_paragraph':
+            drex = DureaderExample(example)
+            if drex.illegal_answer_doc():
+                continue
+            if mode == 'gold_paragraph':
+                example = drex.select_by_indexs('all','gold_paragraph',['paragraphs','segmented_paragraphs'])
+            elif mode == 'answer_doc':
+                example = drex.select_by_indexs('answer_doc','gold_paragraph',['paragraphs','segmented_paragraphs'])
+        l.append(example)
+    return l
+
+def filter_no_answer_doc_examples(examples):
+    l = []
+    for example in examples:
+        if DureaderExample(example).illegal_answer_doc():
+            continue
+        l.append(example)
+    return l
+
+def flatten_examples(examples,sample_fields,doc_fields,para_fields=[]):
+    l = []
+    for example in examples:
+        l.extend(flatten_example(example,sample_fields,doc_fields,para_fields))
+    return l
+
+
+
+def load_dataset(path_list,pipelie_funcs,as_list=True):
+    if as_list:
+        return list(itertools.chain(*list(_load_dataset(path_list, pipelie_funcs))))
+    else:
+        return _load_dataset(path_list,pipelie_funcs)
+
+def _load_dataset(path_list,pipelie_funcs):
+    if isinstance(path_list,str):
+        path_list = [path_list]
+    for path in path_list:  
+        for raw_sample in jsonl_reader(path):
+            result = raw_sample
+            for func in pipelie_funcs:
+                result = func(result)
+                if result is None:
+                    break
+            if result is None:
+                continue
+            yield result
+            
+def flatten_example(json_obj,sample_fields,doc_fields,para_fields=[]):
+    return DureaderExample(json_obj).flatten(sample_fields,doc_fields,para_fields)
+
+def flatten_doc(json_obj,doc_fields,para_fields=[]):
+    return  DureaderDocument(json_obj).flatten(doc_fields,para_fields)
+
+
+
+
 
 
 def load_pointwise_examples(path,sample_method,neg_num,attach_label=True):
@@ -127,33 +187,9 @@ def find_fake_answer(sample):
         sample['match_scores'].append(best_match_score)
 
 
+        
 
-def load_dataset(path_list,pipelie_funcs,as_list=True):
-    if as_list:
-        return list(itertools.chain(*list(_load_dataset(path_list, pipelie_funcs))))
-    else:
-        return _load_dataset(path_list,pipelie_funcs)
 
-def _load_dataset(path_list,pipelie_funcs):
-    if isinstance(path_list,str):
-        path_list = [path_list]
-    for path in path_list:  
-        for raw_sample in jsonl_reader(path):
-            result = raw_sample
-            for func in pipelie_funcs:
-                result = func(result)
-                if result is None:
-                    break
-            if result is None:
-                continue
-            yield result
-            
-
-def flatten_example(json_obj,sample_fields,doc_fields,para_fields=[]):
-    return DureaderExample(json_obj).flatten(sample_fields,doc_fields,para_fields)
-
-def flatten_doc(json_obj,doc_fields,para_fields=[]):
-    return  DureaderDocument(json_obj).flatten(doc_fields,para_fields)
 
 
 def get_fields_by_index(json_obj,indexs,indexed_fields):
@@ -188,8 +224,26 @@ class DureaderExample():
     def update(self,field,value):
         self.sample_obj[field] = value
         return self
-        
-
+    
+    def select_fields(self,sample_fields,doc_fields,para_fields):
+        r = copy_by_fields(self.sample_obj,sample_fields)
+        r['documents'] = [DureaderDocument(doc).select_fields(doc_fields,para_fields) for doc in self.sample_obj['documents']]
+        return r
+    
+    def select_by_indexs(self,doc_indexs,para_indexs,para_fields): 
+        doc_indexs = self.get_indexs(doc_indexs)
+        if para_indexs == 'gold_paragraph' or para_indexs =='most_related_para':
+            if type(doc_indexs)==list:
+                para_indexs = ['gold_paragraph' for _ in range(len(doc_indexs)) ]
+            else:
+                para_indexs = ['gold_paragraph']
+        l = []
+        for doc_i,pidxs in zip(doc_indexs,para_indexs):
+            d =  DureaderDocument(self.get_docs(doc_i))
+            l.append(d.select_by_indexs(pidxs,para_fields))           
+        self.sample_obj['documents'] = l
+        return self.sample_obj
+    
     def copy_content(self,white_fields=[],black_fields=[]):
         o = copy_by_fields(self.sample_obj ,white_fields,black_fields)
         return o
@@ -221,10 +275,16 @@ class DureaderExample():
         if type(doc_idxs) == int:
             return docs[0]
         return docs
-        
-    def get_paragraph_fields(self,doc_indexs,paragraph_indexs,para_fields):
-        if doc_indexs=='all':
+    
+    def get_indexs(self,doc_index):
+        if doc_index=='all':
             doc_indexs = list(range(len(self.get_documents())))
+        elif doc_index == 'answer_doc':
+            doc_indexs = [self.get_answer_doc()[1]]
+        return doc_indexs
+    
+    def get_paragraph_fields(self,doc_indexs,paragraph_indexs,para_fields):
+        doc_indexs = self.get_indexs(doc_indexs)
         l = []
         for doc_i,pidxs in zip(doc_indexs,paragraph_indexs):
             d =  DureaderDocument(self.get_docs(doc_i))
@@ -294,7 +354,16 @@ class DureaderDocument():
 
     def __init__(self,json_obj):
         self.json_obj = json_obj
-
+    
+    def select_fields(self,doc_fields,para_fields):
+        r = copy_by_fields(self.json_obj,doc_fields)
+        r.update(self.get_paragraph_fields('all',para_fields))
+        return r
+    
+    def select_by_indexs(self,para_indexs,para_fields): 
+        self.json_obj.update(self.get_paragraph_fields(para_indexs,para_fields))
+        return self.json_obj
+        
     def update(self,field,value):
         self.json_obj[field] = value
         return self
@@ -312,11 +381,20 @@ class DureaderDocument():
         o.update(get_fields_by_index(self.json_obj,para_indexs,para_fields))
         return o
 
+    
+    def get_indexs(self,paragraph_indexs):
+        if paragraph_indexs == 'all':
+            paragraph_indexs =   list(range(len(self.json_obj['paragraphs'])))
+        elif paragraph_indexs == 'most_related_para' or paragraph_indexs == 'gold_paragraph':
+            paragraph_indexs = [self.get_most_related_para()]
+        return paragraph_indexs 
+    
     def get_paragraph_fields(self,paragraph_indexs,fields):
         if type(fields) == str:
             fields = [fields]
-        if paragraph_indexs == 'all':
-            paragraph_indexs =   list(range(len(self.json_obj['paragraphs'])))      
+        
+        paragraph_indexs = self.get_indexs(paragraph_indexs)
+            
         x = get_fields_by_index(self.json_obj,paragraph_indexs,fields)
         if type(paragraph_indexs)==int:
             for f in fields:
@@ -332,11 +410,4 @@ class DureaderDocument():
             obj.update(self.get_paragraph_fields(para_id,para_fields))
             ret.append(obj)
         return ret
-
-
-
-
-
-
-
         

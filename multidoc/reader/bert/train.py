@@ -9,6 +9,65 @@ from  multidoc.core.op import LinearDecoder
 from  multidoc.eval import DureaderMultiDocMrcEvaluator
 
 
+def gold_span_preprocessing_dureader(source,max_q_len,max_seq_length):
+    if (len(source['answer_spans']) == 0):
+        return None
+    if source['answers'] == []:
+        return None
+    if (source['match_scores'][0] < 0.8):
+        return None
+    if (source['answer_spans'][0][1] > max_seq_length):
+        return None
+
+    docs_index = source['answer_docs'][0]
+
+    start_id = source['answer_spans'][0][0]
+    end_id = source['answer_spans'][0][1] + 1          ## !!!!!
+    question_type = source['question_type']
+
+    passages = []
+    try:
+        answer_passage_idx = source['documents'][docs_index]['most_related_para']
+    except:
+        return None
+
+    doc_tokens = source['documents'][docs_index]['segmented_paragraphs'][answer_passage_idx]
+    # 去掉段落內的標題(大部分的段落一開始都會重複標題和一個句號)
+    ques_len = len(source['documents'][docs_index]['segmented_title']) + 1
+    doc_tokens = doc_tokens[ques_len:]
+    start_id , end_id = start_id -  ques_len, end_id - ques_len
+
+    if start_id >= end_id or end_id > len(doc_tokens) or start_id >= len(doc_tokens):
+        return None
+
+    new_doc_tokens = ""
+    for idx, token in enumerate(doc_tokens):
+        if idx == start_id:
+            new_start_id = len(new_doc_tokens)
+            break
+        new_doc_tokens = new_doc_tokens + token
+
+    new_doc_tokens = "".join(doc_tokens)
+
+    new_end_id = new_start_id + len(source['fake_answers'][0])            
+    if source['fake_answers'][0] != "".join(new_doc_tokens[new_start_id:new_end_id]):
+        return None
+    new_end_id = new_end_id - 1
+    # check this example will exceed max_seq_len after convert
+    q_len = min(max_q_len,len(source['question'].strip()))
+    if q_len+3+new_end_id>max_seq_length:
+        return None
+    
+    example = {
+            "question_id":source['question_id'],
+            "question":source['question'].strip(),
+            "passage":new_doc_tokens.strip(),
+            "gold_span": (new_start_id,new_end_id)}
+    return [example]
+
+
+
+
 def convert_examples_to_features(examples,tokenizer, max_seq_length, max_query_length):
     features = []
     for example in tqdm(examples):
@@ -73,13 +132,15 @@ def train():
     batch_size,epoch_num,lr,gradient_accumulation_steps,train_paths,dev_paths =\
     config.get_values('batch_size','epoch_num','lr','gradient_accumulation_steps','train_paths','dev_paths')
     pretrained_path,max_q_len,max_seq_len,save_dir,metric_type = config.get_values('pretrained_bert_path','max_q_len','max_seq_len','save_dir','metric_type')
-    check_answer_doc = lambda x:None if DureaderExample(x).illegal_answer_doc() else DureaderExample(x)
-    check_score = lambda x :   x if ('match_scores' not in x.sample_obj) or (x.sample_obj['match_scores'][0]>=0.8) else None
-    span_pre_func = lambda x: x.charspan_preprocessing('gold_span')
+    #check_answer_doc = lambda x:None if DureaderExample(x).illegal_answer_doc() else DureaderExample(x)
+    #check_score = lambda x :   x if ('match_scores' not in x.sample_obj) or (x.sample_obj['match_scores'][0]>=0.8) else None
+    #span_pre_func = lambda x: x.charspan_preprocessing('gold_span')
     # check whether the  answer span will exceed  the max_seq_len after transform to bert input
-    check_length = lambda x: None if x["gold_span"][1]+3+min(len(x.sample_obj["question"]),max_q_len) >max_seq_len else x
-    flatten_func  = lambda example:example.flatten(['question_id','question','gold_span'],[])
-    preprocess_funcs = [ check_answer_doc,check_score,span_pre_func,check_length,flatten_func]
+    #check_length = lambda x: None if x["gold_span"][1]+3+min(len(x.sample_obj["question"]),max_q_len) >max_seq_len else x
+    #flatten_func  = lambda example:example.flatten(['question_id','question','gold_span'],[])
+    
+    #preprocess_funcs = [ check_answer_doc,check_score,span_pre_func,check_length,flatten_func]
+    preprocess_funcs = [lambda x: gold_span_preprocessing_dureader(x,max_q_len,max_seq_len)]
     device = get_default_device()
     model,tokenizer = create_bert_model(pretrained_path,'reader',None,device)
     bert_input_converter = BertInputConverter(tokenizer,max_q_len,max_seq_len)
@@ -124,9 +185,9 @@ def train():
         # evaluate 
         model.eval()
         reader = BertReader(model,bert_input_converter,decoder,device)
-        evaluator = DureaderMultiDocMrcEvaluator('gold_paragraph',metric_type)
+        evaluator = DureaderMultiDocMrcEvaluator(metric_type)
         print('evaluate')
-        result = evaluator.evaluate_reader_on_path(dev_paths,reader)
+        result = evaluator.evaluate_reader_on_path(dev_paths,'gold_paragraph',reader)
         print(result)
         if result[metric_for_save] >  highest_metric_for_save:
             print('save best model to %s'%(save_dir))

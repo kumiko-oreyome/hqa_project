@@ -1,20 +1,20 @@
 import functools,torch
 from .. import get_default_device,torchtext_batch_to_dictlist
 from torchtext.data import Dataset,Example,RawField,Iterator,Field,BucketIterator
-from .modeling import BertForQuestionAnswering,BertConfig
+from .modeling import BertForQuestionAnswering,BertForSequenceClassification,BertConfig
 from .tokenization import BertTokenizer
 import os
-from  multidoc.core.op import LinearDecoder
+from  multidoc.core.op import create_decoder
 
 
 
 def create_bert_model(bert_config_dir,model_type,weight_path=None,device=None):
     config_path,bert_pretrained_path,vocab_path = '%s/config.json'%(bert_config_dir),'%s/model.bin'%(bert_config_dir),'%s/vocab.txt'%(bert_config_dir)
+    config = BertConfig(config_path)
     if model_type == 'reader':
-        config = BertConfig(config_path)
         model = BertForQuestionAnswering(config)
     elif  model_type == 'ranker':
-        model = BertForSequenceClassification.from_pretrained(config_path,num_labels=2)
+        model = BertForSequenceClassification.from_pretrained(bert_config_dir,num_labels=2)
     
     if weight_path is not None:
         print('load weight from %s'%(weight_path))
@@ -97,6 +97,7 @@ class BertInputConverter():
             example.update(res.to_dict())
             if span_field is not None:
                 example[span_field] = res.get_input_position(* example[span_field])
+
         return examples
 
 
@@ -174,7 +175,7 @@ class BertPointwiseRanker():
         return self.evaluate_on_batch(iterator)
 
     def get_batchiter(self,record_list,batch_size=64):
-        dataset  = BertDataset(records,self.input_converter,device=self.device)
+        dataset  = BertDataset(record_list,self.input_converter,device=self.device)
         iterator = dataset.make_batchiter(batch_size=batch_size)
         return iterator
 
@@ -206,7 +207,12 @@ class BertReader():
         device = get_default_device()
         model,tokenizer = create_bert_model(config.get_values('pretrained_bert_path'),'reader','%s/model.bin'%(config.get_values('save_dir')),device)
         bert_input_converter = BertInputConverter(tokenizer,config.get_values('max_q_len'),config.get_values('max_seq_len'))
-        decoder = LinearDecoder()
+        
+        if  'decoder' not in config.json_obj:
+            decoder = create_decoder(None)
+        else:
+            decoder = create_decoder(config.json_obj["decoder"])
+            
         model.eval() 
         reader = BertReader(model,bert_input_converter,decoder,device)
         return reader

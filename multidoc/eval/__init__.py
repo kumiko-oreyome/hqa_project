@@ -1,40 +1,38 @@
 from .metric import compute_bleu_rouge,normalize,RankingMetric,SQuadMetric
 from multidoc.util import group_dict_list,RecordGrouper
 from multidoc.dataset import  dureader
+from tqdm import tqdm
 class DureaderMultiDocMrcEvaluator():
-    def __init__(self,evaluate_mode=None,metric_name='dureader'):
-        self.evaluate_mode = evaluate_mode
+    def __init__(self,metric_name='dureader'):
         self.metric_name = metric_name
-        assert self.evaluate_mode in ['gold_paragraph','answer_doc',None]
         assert self.metric_name in ['dureader','squad']
     
     def get_defalut_judger(self):
         from multidoc.core.op import MaxAllJudger
         return MaxAllJudger()
     
-    def load_examples(self,path):
-        check_answer_doc = lambda x:None if dureader.DureaderExample(x).illegal_answer_doc() else dureader.DureaderExample(x)
-        paragraph_selection = lambda example: example
-        if self.evaluate_mode == 'gold_paragraph':
-            paragraph_selection = lambda example:dureader.DureaderExample(example.copy_subset_documents([])).\
-        update('documents',example.get_paragraph_fields('all',example.get_most_related_paras(wrap_list=True),'paragraphs'))
-        elif self.evaluate_mode == 'answer_doc':
-            paragraph_selection = lambda example:dureader.DureaderExample(example.copy_subset_documents([])).update('documents',\
-        [{'paragraphs':[example.get_gold_paragraph(['paragraphs'])['paragraphs']]}])
-        flatten_func  = lambda example:example.flatten(['question_id','question','answers'],[])
-        examples =  dureader.load_dataset(path,[check_answer_doc,paragraph_selection,flatten_func])
-        return examples
-    
-    def evaluate_multidoc_mrc_on_path(self,path,ranker,reader,judger=None):
-        examples =  self.load_examples(path)
-        print('load %d evaluate examples'%(len(examples)))
-        return self.evaluate_multidoc_mrc_on_examples(examples,ranker,reader,judger)
+    # TODO: refactoring this part to another class
+    def evaluate_multidoc_mrc_on_path(self,paths,ranker,reader,judger=None):
+        from multidoc.core.op import  RankBasedSelector
+        selector = RankBasedSelector(ranker,k=1)
+        selected_examples = []
+        for example in tqdm(dureader._load_dataset(paths,[])):
+            example =  dureader.DureaderExample(example)
+            if example.illegal_answer_doc():
+                continue
+            l = example.flatten(['question_id','question','answers'],[])
+            res = selector.paragraph_selection(l)
+            selected_examples.extend(res)
+        return self.evaluate_reader_on_examples(selected_examples,reader,judger)
     
     def evaluate_multidoc_mrc_on_examples(self,examples,ranker,reader,judger=None):
         pass
-    
-    def evaluate_reader_on_path(self,path,reader,judger=None):
-        examples = self.load_examples(path)
+          
+    def evaluate_reader_on_path(self,path,evaluate_mode,reader,judger=None):
+        assert evaluate_mode in ['gold_paragraph','answer_doc',None]
+        examples = dureader.load_dureader_examples(path,evaluate_mode)
+        examples = dureader.filter_no_answer_doc_examples(examples)
+        examples = dureader.flatten_examples(examples,['question_id','question','answers'],[])
         print('load %d evaluate examples'%(len(examples)))
         return self.evaluate_reader_on_examples(examples,reader,judger)
          

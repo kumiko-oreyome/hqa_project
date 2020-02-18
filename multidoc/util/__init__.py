@@ -2,7 +2,7 @@ import json
 import torch
 import pandas as pd
 from types import SimpleNamespace
-
+from .textutil import Tokenizer,Tfidf,to_simplified_sentences
 
 class JsonConfig():
     @classmethod

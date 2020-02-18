@@ -1,47 +1,68 @@
-from multidoc.util import RecordGrouper
+from collections import Counter
+from multidoc.util import RecordGrouper,JsonConfig,Tokenizer,Tfidf
+from multidoc.dataset.dureader import DureaderExample,load_dataset
 
 
-def create_ranker(cls_name,**kwargs):
-    from  multidoc.util.bert import BertPointwiseRanker,BertReader,create_bert_model
-    bert_ranker_cls = {'BertPointwiseRanker':BertPointwiseRanker}
-    
-    if cls_name in bert_ranker_cls:
-        _cls = bert_ranker_cls[cls_name]
-        kwargs["model"] = _cls.from_config(kwargs["model"])
-        # create model by config path
-        # create ranker
-        #kwargs["model"] =
-    ranker = _cls(**kwargs)
+
+class ComponentConfig():
+    # config : dict of {'class':'class name here','kwargs':{'arg1':value,'arg2':value2}}
+    def __init__(self,config):
+        self.config = config
+    def get_cls_and_kwargs(self):
+        return self.config['class'],self.config['kwargs']
+
+def create_decoder(config_dict=None):
+    if config_dict is None:
+        return LinearDecoder()
+    cls_name,kwargs = ComponentConfig(config_dict).get_cls_and_kwargs()
+    name2cls = {'LinearDecoder':LinearDecoder}
+    _cls = name2cls[cls_name]
+    return  _cls(**kwargs)
+
+def create_judger(config_dict=None):
+    if config_dict is None:
+        return MaxAllJudger()
+    cls_name,kwargs = ComponentConfig(config_dict).get_cls_and_kwargs()
+    name2cls = {'MaxAllJudger':MaxAllJudger,'TopKJudger':TopKJudger,'LambdaJudger':LambdaJudger}
+    _cls = name2cls[cls_name]
+    return  _cls(**kwargs)
+
+def create_ranker(config_dict):
+    from  multidoc.util.bert import BertPointwiseRanker,create_bert_model
+    cls_name,kwargs = ComponentConfig(config_dict).get_cls_and_kwargs()
+    name2cls = {'BertPointwiseRanker':BertPointwiseRanker,'TfIdfRanker':TfIdfRanker,'WordMatchRanker':WordMatchRanker}
+    ranker_based_on_bert = ['BertPointwiseRanker']
+    _cls = name2cls[cls_name]
+    if cls_name in ranker_based_on_bert:
+        # create ranker by config path
+        ranker = _cls.from_config(JsonConfig(kwargs["config"]))
+    else:
+        ranker = _cls(**kwargs)
     return ranker
 
-def create_paragraph_selector(cls_name,**kwargs):
-    from  multidoc.util.bert import BertPointwiseRanker,BertReader,create_bert_model
-    ranker_based_selector_cls = {'BertPointwiseRanker':BertPointwiseRanker}
+def create_reader(config_dict):
+    from  multidoc.util.bert import BertReader
+    cls_name,kwargs = ComponentConfig(config_dict).get_cls_and_kwargs()
+    name2cls = {'BertReader':BertReader}
+    reader_based_on_bert = ['BertReader']
+    _cls = name2cls[cls_name]
+    if cls_name in reader_based_on_bert:
+        # create bert model by config path
+        reader = _cls.from_config(JsonConfig(kwargs["config"]))
+    else:
+        reader = _cls(**kwargs)
+    return reader
+
+def create_paragraph_selector(config_dict):
+    cls_name,kwargs = ComponentConfig(config_dict).get_cls_and_kwargs()
+    name2cls = {'RankBasedSelector':RankBasedSelector}
+    ranker_based_selector_cls = ['RankBasedSelector']
+    _cls = name2cls[cls_name]
     if cls_name in ranker_based_selector_cls:
-        _cls = ranker_based_selector_cls[cls_name]
-        kwargs["model"] = _cls.from_config(kwargs["model"])
+        kwargs["ranker"] = create_ranker(kwargs["ranker"])
     ranker = _cls(**kwargs)
     return ranker
 
-def create_reader(cls_name,**kwargs):
-    ranker_based_selector_cls = {'BertPointwiseRanker':None}
-    if cls_name in ranker_based_selector_cls:
-        # create model by config path
-        # create ranker
-        #kwargs["model"] =
-        pass
-    ranker = _cls(**kwargs)
-    return ranker
-
-def create_judger(cls_name,**kwargs):
-    ranker_based_selector_cls = {'BertPointwiseRanker':None}
-    if cls_name in ranker_based_selector_cls:
-        # create model by config path
-        # create ranker
-        #kwargs["model"] =
-        pass
-    ranker = _cls(**kwargs)
-    return ranker
 
 def find_most_related_paragraph(match_item,paragraphs,metric_fn):
     most_related_para = 0
@@ -204,15 +225,15 @@ class MultiplyJudger():
 
 class RankBasedSelector():
     @classmethod
-    def select_top_k_item_in_records(cls,records,group_field,score_field):
+    def select_top_k_item_in_records(cls,records,group_field,score_field,k):
         group_dict = RecordGrouper(records).group(group_field)
-        return cls.select_top_k_item_in_group( group_dict,score_field)
+        return cls.select_top_k_item_in_group( group_dict,score_field,k)
     @classmethod
-    def select_top_k_item_in_group(cls,group_dict,score_field):
+    def select_top_k_item_in_group(cls,group_dict,score_field,k):
         ret = []
         for _,items in group_dict.items():
-            l = list(sorted(paragraphs,key=lambda x: -1*x[score_field]))
-            ret.extend(l[0:self.k])
+            l = list(sorted(items,key=lambda x: -1*x[score_field]))
+            ret.extend(l[0:k])
         return ret
             
     def __init__(self,ranker,k=1):
@@ -223,7 +244,7 @@ class RankBasedSelector():
         pass
     
     def paragraph_selection(self,sample_list):
-        samples_with_rankscore = self.evaluate_scores(sample_list)
+        samples_with_rankscore = self.ranker.evaluate_on_records(sample_list)
         return self.select_top_k_each_doc(samples_with_rankscore)
 
 
@@ -239,7 +260,63 @@ class RankBasedSelector():
         group_dict = self._group_record_by_question(records_with_rankscore)
         selected_samples = []
         for _,values in group_dict.items():
-            l = self.select_top_k_item_in_records(values,'doc_id','rank_score')
-            selected_samples.extend(l[0:self.k]) 
+            l = self.select_top_k_item_in_records(values,'doc_id','rank_score',self.k)
+            selected_samples.extend(l) 
         return selected_samples
+    
+# rankers
+class TfIdfRanker():
+    def __init__(self,corpus_path_list=['./data/zhidao.train.json','./data/search.train.json']):
+        self.corpus_path_list = corpus_path_list
+        #load examples
+        samples = load_dureader_examples(corpus_path_list,'gold_paragraph')
+        passages = list(map(lambda x:x['passage'],samples))
+        self.tokenizer =  Tokenizer()
+        self.tfidf = Tfidf(passages,self.tokenizer.tokenize,corpus_path='./data/tfidf_ranker_corpus')
+
+    def rank(self,example_dict):
+        pass
+
+    def evaluate_on_records(self,record_list):
+        for record in record_list:
+            question = record['question']
+            passage =  record['passage']
+            score = self.tfidf.cosine_similarity(question,passage)
+            record['rank_score'] = score
+        return record_list
+
+    def match_score(self,question_tokens,passage_tokens):
+        common_with_question = Counter(passage_tokens) & Counter(question_tokens)
+        correct_preds = sum(common_with_question.values())
+        if correct_preds == 0:
+            recall_wrt_question = 0
+        else:
+            recall_wrt_question = float(correct_preds) / len(question_tokens)
+        return recall_wrt_question
+
+
+class WordMatchRanker():
+    def __init__(self):
+        self.tokenizer =  Tokenizer()
+    def rank(self,example_dict):
+        pass
+    def evaluate_on_records(self,record_list):
+        for record in record_list:
+            question = record['question']
+            passage =  record['passage']
+            question_tokens = self.tokenizer.tokenize(question)
+            passage_tokens = self.tokenizer.tokenize(passage)
+            score = self.match_score(question_tokens,passage_tokens)
+            record['rank_score'] = score
+        return record_list
+
+    def match_score(self,question_tokens,passage_tokens):
+        common_with_question = Counter(passage_tokens) & Counter(question_tokens)
+        correct_preds = sum(common_with_question.values())
+        if correct_preds == 0:
+            recall_wrt_question = 0
+        else:
+            recall_wrt_question = float(correct_preds) / len(question_tokens)
+        return recall_wrt_question
+    
 
