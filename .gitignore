@@ -17,3 +17,4 @@ experiments/reader/bidaf/
 pretrained/chinese_wwm_ext_pytorch/vocab.txt
 *.txt
 env/
+./server/config.py

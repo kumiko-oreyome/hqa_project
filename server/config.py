@@ -30,3 +30,15 @@ mock_mrc_model = create_config_dict('mock')
 selector_reader_model = create_config_dict('SelectorReaderModel',selector=bert_ranker_selector,reader=bert_reader)
 #mrc_server_config = {"port":8787,"model":mock_mrc_model}
 mrc_server_config = {"port":8787,"model":selector_reader_model}
+
+
+# elastic search
+elastic_host = 
+elastic_port = 
+elastic_index_cmkb = 'cmkb'
+elastic_doc_type_cmkb= 'library'
+
+
+# data collection for cmkb
+cmkb_keywords = ['糖尿病','高血壓']
+cmkb_doc_file = './data/disease_cmkb.jsonl'

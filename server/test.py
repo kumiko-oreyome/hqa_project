@@ -1,5 +1,11 @@
-from .config import mrc_server_config
-from . import mrc 
+import asyncio
+from .config import mrc_server_config,elastic_host,elastic_port,elastic_index_cmkb,elastic_doc_type_cmkb,cmkb_doc_file 
+from . import mrc
+from .webrequest import HealthArticleRequest,GoogleSearchRequest,YahooAnswerQuestionRequest,CMKBRequest, CMKBKeywordSearchPage,CMKBLibraryPage
+from .dao.cmkb import CMKBDLibraryDocument,CMKBElasticDB
+from multidoc.util import jsonl_writer
+
+event_loop = asyncio.get_event_loop()
 
 class TestMrcApp():
     def __init__(self,config):
@@ -23,5 +29,88 @@ def test_mrc_server():
     json_data = rv.get_json()
     print(json_data)
 
+
+
+
+def test_common_health_request():
+    print('test common health request')
+    r = HealthArticleRequest('https://www.commonhealth.com.tw/article/article.action?nid=80297',event_loop)
+    page = r.async_send()
+    title = page.get_title()
+    print('title %s'%(title))
+    assert r.article_id == 80297
+    assert '排濕' == title[0:2]
+
+
+def test_google_search_request():
+    COMMON_HEALTH_SITE_URL = 'https://www.commonhealth.com.tw/article'
+    print('test google search request')
+    r =  GoogleSearchRequest(keywords=['糖尿病','胃繞道','飲食'],site_url=COMMON_HEALTH_SITE_URL,loop=event_loop)
+    page = r.async_send()
+    print(len(page.get_result_links()))
+    print(page.get_result_links())
+    print(page.get_next_page_link())
+
+def test_yahoo_answer_request():
+    print('test yahoo answer request')
+    r = YahooAnswerQuestionRequest('https://tw.answers.yahoo.com/question/index?qid=20191025153345AAXp5e3')
+    page = r.async_send()
+    title = page.get_title()
+    #print(page.get_body())
+    assert title == "食鹽過了期還可以吃嗎? 有何不良影響?"
+    
+
+def test_cmkb_request():
+    print('test cmkb request')
+    page = CMKBRequest().get_library_page('https://kb.commonhealth.com.tw/library/30.html')
+    with open('./test/cmkb_test.html','w',encoding='utf-8') as f:
+        f.write(page.html_content)
+
+
+def test_cmkb_keyword_search():
+    print('test cmkb keyword search')
+    print('create kw search page')
+    page = CMKBKeywordSearchPage('糖尿病',event_loop)
+    print('start script')
+    async def  script():
+        await page.expand_page_until(3)
+        assert len(page.current_page_infos) == 48
+        print(page.current_page_infos)
+        
+
+def test_cmkb_library_page():
+    html = open('./test/cmkb_test.html','r',encoding='utf-8').read()
+    page = CMKBLibraryPage(html)
+    assert page.get_title() == '什麼是糖尿病？'
+    paragraphs = CMKBRequest.html_parsing_paragraph(page.get_body())
+    doc = CMKBDLibraryDocument(url='https://kb.commonhealth.com.tw/library/30.html',title=page.get_title(),body=page.get_body(),tags=['糖尿病'],paragraphs=paragraphs)
+    jsonl_writer('./test/test_cmkb_library_page.jsonl',[doc.to_json()])
+
+
+def test_crawl_cmkb_docs_by_keyword():
+    req = CMKBRequest(event_loop)
+    docs = req.crawl_keyword_search_page('高血壓',100)
+    jsonl_writer('./test/高血壓.jsonl',docs)
+
+
+def test_elastic():
+    db = CMKBElasticDB(host=elastic_host,port=elastic_port,index=elastic_index_cmkb,doc_type=elastic_doc_type_cmkb)
+    #db.delete_all_docs()
+    #db.insert_library_docs_from_file('./data/test_kb_data.jsonl')
+    res = db.retrieve_library_doc("糖尿病 高血壓 感冒")
+    print('reteieve %d results'%(len(res)))
+    for r in res:
+        print(r['title'],r['tags'])
+
+
 if __name__ == '__main__':
-    test_mrc_server()
+    #test_mrc_server()
+    #test_common_health_request()
+    #test_google_search_request()
+    #test_yahoo_answer_request()
+    #test_cmkb_request()
+    #test_cmkb_keyword_search()
+    #test_cmkb_library_page()
+    #test_crawl_cmkb_docs_by_keyword()
+    test_elastic()
+    
