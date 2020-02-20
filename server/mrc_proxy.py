@@ -7,7 +7,9 @@ from .mrc  import  create_app,create_mrc_model_for_server
 def create_mrc_proxy(config):
     class_name,kwargs = config["class"],config["kwargs"]
     name2class = {'TestProxy':TestProxy,'RedirectProxy': RedirectProxy,'DirectAccessProxy':DirectAccessProxy}
-    _cls = name2class[class_name]   
+    _cls = name2class[class_name]
+    if class_name in ['DirectAccessProxy']:
+        return _cls.from_config(kwargs['config'])
     return _cls(**kwargs)
 
 
@@ -43,7 +45,12 @@ class RedirectProxy():
 
 # mrc model in the same process of qa server
 class DirectAccessProxy():
-    def __init__(self,config):
-        self.model =  create_mrc_model_for_server(config)
+    @classmethod
+    def from_config(cls,config):
+        model = create_mrc_model_for_server(config)
+        return  DirectAccessProxy(model)
+    def __init__(self,model):
+        self.model = model
     def send_mrc_input(self,mrc_input,answer_num=3,algo_version=0):
-        return self.model.get_answer_list(mrc_input,answer_num)
+        answer_list = self.model.get_answer_list(mrc_input,answer_num)
+        return {'result':'success','message':'mrc success','answers':answer_list}

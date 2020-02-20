@@ -1,5 +1,5 @@
 import httpx
-from .config import mrc_server_config,mrc_server_config_mock
+from .config import MRC_SERVER_CONFIG 
 from flask import Flask,request,jsonify
 from multidoc.dataset.dureader import DureaderExample,flatten_examples
 from multidoc.util import RecordGrouper,group_dict_list,get_default_device
@@ -120,6 +120,6 @@ class SelectorReaderModel():
 
 
 if __name__ == '__main__':
-    app_config = mrc_server_config
+    app_config = MRC_SERVER_CONFIG 
     app = create_app( app_config)
     app.run(debug=False,port=app_config["port"],threaded=True)

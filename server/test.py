@@ -4,10 +4,12 @@ from .config import mrc_server_config,elastic_host,elastic_port,elastic_index_cm
 
 from . import mrc
 from .mrc_proxy import create_mrc_proxy
+from .docretv import  create_document_retriever
 from .webrequest import HealthArticleRequest,GoogleSearchRequest,YahooAnswerQuestionRequest,CMKBRequest, CMKBKeywordSearchPage,CMKBLibraryPage
 from .dao.cmkb import CMKBDLibraryDocument,CMKBElasticDB
-from .docretv import  create_document_retriever
+from . import qa_server 
 from multidoc.util import jsonl_writer
+
 
 event_loop = asyncio.get_event_loop()
 
@@ -129,6 +131,36 @@ def test_ELKRetriever():
     retv =  create_document_retriever(config,event_loop)
     print(retv.retrieve_candidates("糖尿病的原因是什麼?"))
 
+
+def test_qa_server():
+    print('test qa server')
+    app = qa_server.create_app()
+    print('send data')
+    with app.test_client() as c:
+        print('test')
+        rv = c.post('/api/fakeqa', json={'question':"糖尿病要吃什麼對身體比較好?",'answer_num':'2','algo_version':0})
+        json_data = rv.get_json()
+        assert json_data['result']=='false'
+        rv = c.post('/api/fakeqa', json={'question':"糖尿病要吃什麼對身體比較好?",'answer_num':4,'algo_version':0})
+        json_data = rv.get_json()
+        print(json_data)
+        rv = c.post('/api/webqa', json={'question':"糖尿病要吃什麼對身體比較好?",'answer_num':4,'algo_version':0})
+        json_data = rv.get_json()
+        print(json_data)
+
+def test_qa_server_elk():
+    print('test qa server elk')
+    app = qa_server.create_app()
+    print('send data')
+    with app.test_client() as c:
+        print('test')
+        rv = c.post('/api/kbqa', json={'question':"糖尿病要吃什麼對身體比較好?",'answer_num':3,'algo_version':0})
+        json_data = rv.get_json()
+        print(json_data)
+        rv = c.post('/api/fastqa', json={'question':"糖尿病要吃什麼對身體比較好?",'answer_num':3,'algo_version':0})
+        json_data = rv.get_json()
+        print(json_data)
+
 if __name__ == '__main__':
     #test_mrc_server()
     #test_common_health_request()
@@ -144,4 +176,6 @@ if __name__ == '__main__':
     #test_RedirectProxy()
     #test_FakeRetriever()
     #test_GoogleSearchRetriever()
-    test_ELKRetriever()
+    #test_ELKRetriever()
+    #test_qa_server()
+    test_qa_server_elk()
