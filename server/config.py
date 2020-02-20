@@ -28,13 +28,18 @@ wordmatch_selector = create_config_dict('RankBasedSelector',ranker=word_match_ra
 # mrc server models
 mock_mrc_model = create_config_dict('mock')
 selector_reader_model = create_config_dict('SelectorReaderModel',selector=bert_ranker_selector,reader=bert_reader)
-#mrc_server_config = {"port":8787,"model":mock_mrc_model}
-mrc_server_config = {"port":8787,"model":selector_reader_model}
+
+mrc_server_port = 8787
+mrc_server_host = 
+
+
+mrc_server_config_mock = {"port":mrc_server_port,"model":mock_mrc_model}
+mrc_server_config = {"port":mrc_server_port,"model":selector_reader_model}
 
 
 # elastic search
-elastic_host = 
-elastic_port = 
+elastic_host =  
+elastic_port =  
 elastic_index_cmkb = 'cmkb'
 elastic_doc_type_cmkb= 'library'
 

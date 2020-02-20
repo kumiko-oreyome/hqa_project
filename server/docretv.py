@@ -1,6 +1,16 @@
 from lxml import etree,html
 from .webrequest import HealthArticleRequest,GoogleSearchRequest,HealthArticleRequest,Query,YahooAnswerQuestionRequest
 
+
+
+
+
+def create_document_retriever(config):
+    class_name,kwargs = config["class"],config["kwargs"]
+    name2class = {'FakeRetriever':FakeRetriever,'CMKBElasticSearchRetriever': CMKBElasticSearchRetriever,'GoogleSearchRetriever': GoogleSearchRetriever}
+    _cls = name2class[class_name]
+
+
 class SimpleParagraphTransform():
     def __init__(self):
         pass
@@ -112,6 +122,7 @@ def _get_article_paragraphs_by_p_tags(pnodes,max_char_num):
     if len(current_paragraph)>0:
         paragraphs.append(current_paragraph)
     return paragraphs
+
 
 
 class FakeRetriever():

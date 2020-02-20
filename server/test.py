@@ -1,27 +1,22 @@
 import asyncio
-from .config import mrc_server_config,elastic_host,elastic_port,elastic_index_cmkb,elastic_doc_type_cmkb,cmkb_doc_file 
+from .config import mrc_server_config,elastic_host,elastic_port,elastic_index_cmkb,elastic_doc_type_cmkb,cmkb_doc_file,mrc_server_config_mock,\
+    mock_mrc_model,selector_reader_model,mrc_server_port,mrc_server_host
+
 from . import mrc
+from .mrc_proxy import create_mrc_proxy
 from .webrequest import HealthArticleRequest,GoogleSearchRequest,YahooAnswerQuestionRequest,CMKBRequest, CMKBKeywordSearchPage,CMKBLibraryPage
 from .dao.cmkb import CMKBDLibraryDocument,CMKBElasticDB
 from multidoc.util import jsonl_writer
 
 event_loop = asyncio.get_event_loop()
 
-class TestMrcApp():
-    def __init__(self,config):
-        self.app = mrc.create_app(config)
-    def multi_mrc(self,mrc_input,answer_num=3,algo_version=0):
-        with self.app.test_client() as c:
-            rv = c.post('/qa', json={'mrc_input':mrc_input,'answer_num':answer_num,'algo_version':algo_version})
-        return rv.get_json()
-
-
+doc_1 = {'title':'c8763','url':'www.c8763.com','paragraphs':["c8763是某黑色劍士的技能","發動c8763需要隊友幫稱十秒","結束了嗎"]}
+doc_2 = {'title':'sao','url':'www.sao.com','paragraphs':["因為太過中二所以c8763會被噓","c8763後來有很多被人惡搞的梗"]}
+test_mrc_input = {"question":"c8763是什麼","documents":[doc_1,doc_2]}
 
 
 def test_mrc_server():
-    doc_1 = {'title':'c8763','url':'www.c8763.com','paragraphs':["c8763是某黑色劍士的技能","發動c8763需要隊友幫稱十秒","結束了嗎"]}
-    doc_2 = {'title':'sao','url':'www.sao.com','paragraphs':["因為太過中二所以c8763會被噓","c8763後來有很多被人惡搞的梗"]}
-    test_mrc_input = {"question":"c8763是什麼","documents":[doc_1,doc_2]}
+
     app = mrc.create_app(mrc_server_config)
     print('send data')
     with app.test_client() as c:
@@ -95,12 +90,27 @@ def test_crawl_cmkb_docs_by_keyword():
 
 def test_elastic():
     db = CMKBElasticDB(host=elastic_host,port=elastic_port,index=elastic_index_cmkb,doc_type=elastic_doc_type_cmkb)
-    #db.delete_all_docs()
-    #db.insert_library_docs_from_file('./data/test_kb_data.jsonl')
     res = db.retrieve_library_doc("糖尿病 高血壓 感冒")
     print('reteieve %d results'%(len(res)))
     for r in res:
         print(r['title'],r['tags'])
+
+def test_TestMrcProxy():
+    proxy = create_mrc_proxy({'class':'TestProxy','kwargs':{"config":mrc_server_config_mock}})
+    print(proxy.send_mrc_input(test_mrc_input))
+    proxy = create_mrc_proxy({'class':'TestProxy','kwargs':{"config":mrc_server_config}})
+    print(proxy.send_mrc_input(test_mrc_input))
+
+def test_DirectAccessProxy():  
+    proxy = create_mrc_proxy({'class':'DirectAccessProxy','kwargs':{"config":mock_mrc_model}})
+    print(proxy.send_mrc_input(test_mrc_input))
+    proxy = create_mrc_proxy({'class':'DirectAccessProxy','kwargs':{"config":selector_reader_model}})
+    print(proxy.send_mrc_input(test_mrc_input))
+
+def test_RedirectProxy():  
+    proxy = create_mrc_proxy({'class':'RedirectProxy','kwargs':{"server_url":'http://localhost:%s/qa'%(mrc_server_port)}})
+    print(proxy.send_mrc_input(test_mrc_input))
+
 
 
 if __name__ == '__main__':
@@ -112,5 +122,8 @@ if __name__ == '__main__':
     #test_cmkb_keyword_search()
     #test_cmkb_library_page()
     #test_crawl_cmkb_docs_by_keyword()
-    test_elastic()
+    #test_elastic()
+    #test_TestMrcProxy()
+    #test_DirectAccessProxy()
+    test_RedirectProxy()
     
