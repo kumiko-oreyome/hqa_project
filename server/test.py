@@ -1,11 +1,12 @@
 import asyncio
 from .config import mrc_server_config,elastic_host,elastic_port,elastic_index_cmkb,elastic_doc_type_cmkb,cmkb_doc_file,mrc_server_config_mock,\
-    mock_mrc_model,selector_reader_model,mrc_server_port,mrc_server_host
+    mock_mrc_model,selector_reader_model,mrc_server_port,mrc_server_host,elk_config,keywords_path
 
 from . import mrc
 from .mrc_proxy import create_mrc_proxy
 from .webrequest import HealthArticleRequest,GoogleSearchRequest,YahooAnswerQuestionRequest,CMKBRequest, CMKBKeywordSearchPage,CMKBLibraryPage
 from .dao.cmkb import CMKBDLibraryDocument,CMKBElasticDB
+from .docretv import  create_document_retriever
 from multidoc.util import jsonl_writer
 
 event_loop = asyncio.get_event_loop()
@@ -111,7 +112,22 @@ def test_RedirectProxy():
     proxy = create_mrc_proxy({'class':'RedirectProxy','kwargs':{"server_url":'http://localhost:%s/qa'%(mrc_server_port)}})
     print(proxy.send_mrc_input(test_mrc_input))
 
+def test_FakeRetriever():  
+    retv =  create_document_retriever({'class':'FakeRetriever','kwargs':{}},event_loop)
+    print(retv.retrieve_candidates("今天幾月幾號?"))
 
+
+def test_GoogleSearchRetriever():  
+    #url = 'https://tw.answers.yahoo.com'
+    url = 'https://www.commonhealth.com.tw/article'
+    retv =  create_document_retriever({'class':'GoogleSearchRetriever','kwargs':{'site_url':url,'k':5,'expand_keywords':False}},event_loop)
+    print(retv.retrieve_candidates("糖尿病的飲食"))
+
+
+def test_ELKRetriever():  
+    config = {'class':'CMKBElasticSearchRetriever','kwargs':{'config':{'elk_db':elk_config,'word_dict':keywords_path,'k':5}}}    
+    retv =  create_document_retriever(config,event_loop)
+    print(retv.retrieve_candidates("糖尿病的原因是什麼?"))
 
 if __name__ == '__main__':
     #test_mrc_server()
@@ -125,5 +141,7 @@ if __name__ == '__main__':
     #test_elastic()
     #test_TestMrcProxy()
     #test_DirectAccessProxy()
-    test_RedirectProxy()
-    
+    #test_RedirectProxy()
+    #test_FakeRetriever()
+    #test_GoogleSearchRetriever()
+    test_ELKRetriever()

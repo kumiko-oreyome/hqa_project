@@ -39,7 +39,7 @@ mrc_server_config = {"port":mrc_server_port,"model":selector_reader_model}
 
 # elastic search
 elastic_host =  
-elastic_port =  
+elastic_port =  9200
 elastic_index_cmkb = 'cmkb'
 elastic_doc_type_cmkb= 'library'
 
@@ -47,3 +47,9 @@ elastic_doc_type_cmkb= 'library'
 # data collection for cmkb
 cmkb_keywords = ['糖尿病','高血壓']
 cmkb_doc_file = './data/disease_cmkb.jsonl'
+
+
+keywords_path = './data/keywords.txt'
+stopwords_path = './data/stopwords.txt'
+
+elk_config = {"host":elastic_host,"port":elastic_port ,"index":elastic_index_cmkb ,"doc_type":elastic_doc_type_cmkb}
