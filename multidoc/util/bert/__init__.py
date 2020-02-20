@@ -10,9 +10,8 @@ from  multidoc.core.op import create_decoder
 
 def create_bert_model(bert_config_dir,model_type,weight_path=None,device=None):
     config_path,bert_pretrained_path,vocab_path = '%s/config.json'%(bert_config_dir),'%s/model.bin'%(bert_config_dir),'%s/vocab.txt'%(bert_config_dir)
-    config = BertConfig(config_path)
     if model_type == 'reader':
-        model = BertForQuestionAnswering(config)
+        model = BertForQuestionAnswering.from_pretrained(bert_config_dir)
     elif  model_type == 'ranker':
         model = BertForSequenceClassification.from_pretrained(bert_config_dir,num_labels=2)
     

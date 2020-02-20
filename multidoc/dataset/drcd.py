@@ -1,5 +1,23 @@
 import json
 from multidoc.util import read_json,write_json,jsonl_reader,jsonl_writer
+from .dureader import DureaderExample,_load_dataset
+
+def load_drcd_examples(paths,mode):
+    l = []
+    for example in _load_dataset(paths,[]):
+        if mode == 'answer_doc' or mode== 'gold_paragraph':
+            drex = DureaderExample(example)
+            if drex.illegal_answer_doc():
+                continue
+            if mode == 'gold_paragraph':
+                example = drex.select_by_indexs('all','gold_paragraph',['paragraphs'])
+            elif mode == 'answer_doc':
+                example = drex.select_by_indexs('answer_doc','gold_paragraph',['paragraphs'])
+        l.append(example)
+    return l
+
+
+
 
 
 class DrcdPreprocessing():

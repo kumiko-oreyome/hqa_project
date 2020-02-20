@@ -30,7 +30,7 @@ class DureaderMultiDocMrcEvaluator():
           
     def evaluate_reader_on_path(self,path,evaluate_mode,reader,judger=None):
         assert evaluate_mode in ['gold_paragraph','answer_doc',None]
-        examples = dureader.load_dureader_examples(path,evaluate_mode)
+        examples = dureader.load_dureader_examples(path,evaluate_mode,False)
         examples = dureader.filter_no_answer_doc_examples(examples)
         examples = dureader.flatten_examples(examples,['question_id','question','answers'],[])
         print('load %d evaluate examples'%(len(examples)))

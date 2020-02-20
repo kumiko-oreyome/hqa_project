@@ -4,7 +4,11 @@ from multidoc.eval.metric import f1_score,recall,max_metric_over_multiple_refs
 from multidoc.util import jsonl_reader
 
 
-def load_dureader_examples(paths,mode):
+def load_dureader_examples(paths,mode,segmeneted_paragraph=True):
+    if segmeneted_paragraph:
+        paragraph_fields = ['paragraphs','segmented_paragraphs']
+    else:
+        paragraph_fields = ['paragraphs']
     l = []
     for example in _load_dataset(paths,[]):
         if mode == 'answer_doc' or mode== 'gold_paragraph':
@@ -12,9 +16,9 @@ def load_dureader_examples(paths,mode):
             if drex.illegal_answer_doc():
                 continue
             if mode == 'gold_paragraph':
-                example = drex.select_by_indexs('all','gold_paragraph',['paragraphs','segmented_paragraphs'])
+                example = drex.select_by_indexs('all','gold_paragraph',paragraph_fields)
             elif mode == 'answer_doc':
-                example = drex.select_by_indexs('answer_doc','gold_paragraph',['paragraphs','segmented_paragraphs'])
+                example = drex.select_by_indexs('answer_doc','gold_paragraph',paragraph_fields)
         l.append(example)
     return l
 
