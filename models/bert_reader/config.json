@@ -1,0 +1,13 @@
+{
+    "batch_size":4,
+    "epoch_num":7,
+    "gradient_accumulation_steps":8,
+    "train_paths":["./data/search.train.json"],
+    "dev_paths":["./data/search.dev.json","./data/zhidao.dev.json"],
+    "pretrained_bert_path":"./models/pretrained/chinese_wwm_ext_pytorch",
+    "lr":0.000001,
+    "max_q_len":60,
+    "max_seq_len":512,
+    "save_dir":"./models/bert_reader",
+    "metric_type":"dureader"
+}

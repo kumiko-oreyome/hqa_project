@@ -281,7 +281,7 @@ class CMKBKeywordSearchPage():
 
 
     async def open_keyword_serch_page(self):
-        browser = await launch({'headless': False,'timeout':1000*360})
+        browser = await launch({'headless': True,'timeout':1000*360})
         page = await browser.newPage()
         await page.goto(self.url)
         await page.setJavaScriptEnabled(enabled=True)
